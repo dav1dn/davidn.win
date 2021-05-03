@@ -1,0 +1,109 @@
+:root {
+  --font-primary: "Archivo", sans-serif;
+  --font-secondary: serif;
+
+  --text-base-size: 1em;
+  --color-primary: #ee792f;
+  --color-secondary: #508AA8;
+
+  --padding-size: 2rem;
+
+  @media screen and (max-width: 468px) {
+    --padding-size: 1rem;
+  }
+}
+
+* { 
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+}
+body {
+  font-family: var(--font-primary);
+  color: var(--color-primary);
+}
+
+p {
+  margin: 0;
+  padding-bottom: 1rem;
+}
+
+a {
+  color: inherit;
+  &:hover {
+    color: var(--color-secondary);
+  }
+}
+
+.hovered:hover~.hovering, .hovering:hover {
+  opacity: 1;
+  position: initial;
+  left: 0;
+}
+
+.hovering {
+  opacity: 0;
+  position: fixed;
+  left: -9999px;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-primary);
+  margin-bottom: 2rem;
+}
+
+h2 {
+  margin: 0 0 var(--padding-size);
+  text-transform: uppercase;
+  font-size: 1.2em;
+  font-weight: 500;
+}
+
+.container {
+  display: grid;
+  grid-template-columns: 400px 1fr;
+
+  @media screen and (max-width: 400px) {
+    grid-template-columns: 1fr;
+  }
+
+  > div {
+    padding: var(--padding-size);
+  }
+}
+
+.intro {
+  max-width: 400px;
+}
+
+.contact {
+  position: absolute;
+  bottom: .5rem;
+  left: var(--padding-size);
+  padding-right: 24px;
+}
+
+
+
+
+// unused
+.header {
+  margin: 8px;
+  width: 400px;
+
+  svg {
+    width: 100%;
+    fill: var(--color-primary);
+  }
+}
+
+h1 {
+  font-size: 13.95vw; // hack
+  margin-left: -0.81vw; // lol
+  line-height: 0; // lmao
+  font-weight: 300;
+}
