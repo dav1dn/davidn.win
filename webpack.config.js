@@ -8,6 +8,7 @@ const generateHTMLPlugins = () =>
       new HTMLWebpackPlugin({
         filename: path.basename(dir), // Output
         template: dir, // Input
+        favicon: 'src/favicon.ico',
       })
   );
 
