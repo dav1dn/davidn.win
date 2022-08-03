@@ -15,8 +15,7 @@ const generateHTMLPlugins = () =>
 module.exports = {
   entry: ["./src/index.js", "./src/styles.scss"],
   devServer: {
-    contentBase: "src",
-    watchContentBase: true,
+    static: "src",
     hot: true,
     port: 8080,
   },
