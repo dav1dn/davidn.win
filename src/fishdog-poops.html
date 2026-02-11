@@ -14,7 +14,7 @@
                 font-family: "Inter", sans-serif;
             }
 
-            /* Custom scrollbar for table */
+            /* Custom scrollbar for table and heatmap */
             .custom-scroll::-webkit-scrollbar {
                 width: 6px;
             }
@@ -79,40 +79,50 @@
                     class="w-full lg:w-1/2 h-1/2 lg:h-full bg-white flex flex-col border-l border-slate-200"
                 >
                     <div
-                        class="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center"
+                        class="flex flex-col flex-[3] overflow-hidden border-b border-slate-200"
                     >
-                        <h2 class="font-medium text-slate-600">Event Log</h2>
-                        <span id="row-count" class="text-xs text-slate-400"
-                            >0 records</span
-                        >
+                        <div class="overflow-y-auto flex-1 custom-scroll p-4">
+                            <table class="w-full text-sm text-left">
+                                <thead
+                                    class="text-xs text-slate-500 uppercase bg-slate-50 sticky top-0"
+                                >
+                                    <tr>
+                                        <th
+                                            scope="col"
+                                            class="px-4 py-3 rounded-l-lg"
+                                        >
+                                            Time
+                                        </th>
+                                        <th scope="col" class="px-4 py-3">
+                                            Notes
+                                        </th>
+                                        <th scope="col" class="px-4 py-3">
+                                            Weather
+                                        </th>
+                                        <th
+                                            scope="col"
+                                            class="px-4 py-3 rounded-r-lg"
+                                        >
+                                            Tags
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody id="table-body"></tbody>
+                            </table>
+                        </div>
                     </div>
 
-                    <div class="overflow-y-auto flex-1 custom-scroll p-4">
-                        <table class="w-full text-sm text-left">
-                            <thead
-                                class="text-xs text-slate-500 uppercase bg-slate-50 sticky top-0"
-                            >
-                                <tr>
-                                    <th
-                                        scope="col"
-                                        class="px-4 py-3 rounded-l-lg"
-                                    >
-                                        Time
-                                    </th>
-                                    <th scope="col" class="px-4 py-3">Notes</th>
-                                    <th scope="col" class="px-4 py-3">
-                                        Weather
-                                    </th>
-                                    <th
-                                        scope="col"
-                                        class="px-4 py-3 rounded-r-lg"
-                                    >
-                                        Tags
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody id="table-body"></tbody>
-                        </table>
+                    <div
+                        class="flex flex-col flex-1 bg-slate-50 overflow-hidden"
+                    >
+                        <div
+                            class="overflow-y-auto flex-1 custom-scroll p-4"
+                            id="heatmap-container"
+                        >
+                            <div class="text-sm text-slate-400 italic">
+                                Loading heatmap...
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -152,6 +162,7 @@
                     const data = await response.json();
 
                     renderData(data.rows);
+                    renderHeatmap(data.rows); // <--- NEW: Generate the heatmap
 
                     statusBadge.textContent = "Live";
                     statusBadge.className =
@@ -161,6 +172,8 @@
                     statusBadge.textContent = "Error";
                     statusBadge.className =
                         "text-xs font-medium bg-red-100 text-red-700 px-2 py-1 rounded-full";
+                    document.getElementById("heatmap-container").innerHTML =
+                        '<div class="text-sm text-red-400 italic">Failed to load heatmap data.</div>';
                 } finally {
                     loadingOverlay.style.display = "none";
                 }
@@ -168,11 +181,9 @@
 
             function renderData(rows) {
                 const tableBody = document.getElementById("table-body");
-                const rowCount = document.getElementById("row-count");
                 const bounds = new google.maps.LatLngBounds();
 
                 tableBody.innerHTML = "";
-                rowCount.innerText = `${rows.length} records`;
 
                 rows.forEach((row) => {
                     // Prepare weather string safely
@@ -256,6 +267,163 @@
                 if (rows.length > 0) {
                     map.fitBounds(bounds);
                 }
+            }
+
+            // NEW: Render the daily weather heatmap below the table
+            function renderHeatmap(rows) {
+                const container = document.getElementById("heatmap-container");
+                const dailyData = {};
+                const allTemps = [];
+
+                // 1. Group data by day, but keep ALL individual events
+                rows.forEach((row) => {
+                    if (!row.weather || !row.weather.feels_like) return;
+
+                    const date = new Date(row.created_at);
+                    const dateStr = date.toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                    });
+                    const timeStr = date.toLocaleTimeString("en-US", {
+                        hour: "numeric",
+                        minute: "2-digit",
+                    });
+
+                    // Extract numeric temperature
+                    const tempMatch =
+                        row.weather.feels_like.match(/-?\d+(\.\d+)?/);
+                    if (!tempMatch) return;
+                    const temp = parseFloat(tempMatch[0]);
+
+                    if (!dailyData[dateStr]) {
+                        dailyData[dateStr] = {
+                            dateLabel: dateStr,
+                            timestamp: date.getTime(),
+                            events: [],
+                        };
+                    }
+
+                    dailyData[dateStr].events.push({
+                        temp: temp,
+                        time: timeStr,
+                        condition: row.weather.conditions,
+                    });
+                    allTemps.push(temp);
+                });
+
+                if (allTemps.length === 0) {
+                    container.innerHTML =
+                        '<div class="text-sm text-slate-400 italic">Not enough weather data to generate a heatmap.</div>';
+                    return;
+                }
+
+                // 2. Sort days from oldest to newest (like a git graph)
+                const sortedDays = Object.values(dailyData).sort(
+                    (a, b) => a.timestamp - b.timestamp,
+                );
+
+                // 3. Find global min and max temperatures to calculate our color scale
+                const minTemp = Math.min(...allTemps);
+                const maxTemp = Math.max(...allTemps, 80);
+
+                // --- GLOBAL TOOLTIP SETUP ---
+                // Create a single tooltip element attached to the body so it never gets clipped
+                let tooltipEl = document.getElementById(
+                    "global-heatmap-tooltip",
+                );
+                if (!tooltipEl) {
+                    tooltipEl = document.createElement("div");
+                    tooltipEl.id = "global-heatmap-tooltip";
+                    tooltipEl.className =
+                        "fixed pointer-events-none opacity-0 transition-opacity duration-200 z-[9999] bg-slate-800 text-white text-xs rounded py-1.5 px-2.5 shadow-lg min-w-max transform -translate-x-1/2 -translate-y-full mt-[-8px]";
+                    tooltipEl.innerHTML =
+                        '<div id="global-heatmap-tooltip-content"></div><div class="absolute top-full left-1/2 -translate-x-1/2 border-[5px] border-transparent border-t-slate-800"></div>';
+                    document.body.appendChild(tooltipEl);
+                }
+
+                // Attach a single hover listener to the container (Event Delegation)
+                if (!container.dataset.listenerAttached) {
+                    container.addEventListener("mouseover", (e) => {
+                        const cell = e.target.closest(".heatmap-cell");
+                        if (!cell) return;
+
+                        // Inject the specific day's data into the tooltip
+                        document.getElementById(
+                            "global-heatmap-tooltip-content",
+                        ).innerHTML = cell.dataset.tooltip;
+
+                        // Calculate position and move the tooltip above the cell
+                        const rect = cell.getBoundingClientRect();
+                        tooltipEl.style.left =
+                            rect.left + rect.width / 2 + "px";
+                        tooltipEl.style.top = rect.top + "px";
+                        tooltipEl.style.opacity = "1";
+                    });
+
+                    container.addEventListener("mouseout", (e) => {
+                        const cell = e.target.closest(".heatmap-cell");
+                        if (!cell) return;
+                        tooltipEl.style.opacity = "0";
+                    });
+
+                    container.dataset.listenerAttached = "true";
+                }
+
+                // 4. Build the HTML Grid
+                let gridHtml = '<div class="flex flex-wrap">';
+
+                sortedDays.forEach((day) => {
+                    // Build the custom HTML tooltip contents
+                    let tooltipHtml =
+                        '<div class="font-semibold border-b border-slate-600 pb-1 mb-1 text-center">' +
+                        day.dateLabel +
+                        "</div>";
+                    day.events.forEach((e) => {
+                        tooltipHtml +=
+                            '<div class="whitespace-nowrap py-0.5 text-slate-200">• ' +
+                            e.time +
+                            ': <span class="text-white font-medium">' +
+                            e.temp +
+                            "°</span> (" +
+                            e.condition +
+                            ")</div>";
+                    });
+
+                    // Escape double quotes so we can safely inject the HTML into a data-attribute
+                    const safeTooltip = tooltipHtml.replace(/"/g, "&quot;");
+
+                    // Start cell wrapper (notice the 'heatmap-cell' class and 'data-tooltip' attribute)
+                    let cellHtml =
+                        '<div class="heatmap-cell group w-5 h-5 cursor-help transition-all duration-150 z-10 hover:scale-110" data-tooltip="' +
+                        safeTooltip +
+                        '">';
+
+                    // Inner wrapper for the stripes (pointer-events-none prevents flickering when mousing over stripes)
+                    cellHtml +=
+                        '<div class="w-full h-full flex overflow-hidden ring-1 ring-black/5 group-hover:ring-2 group-hover:ring-slate-400 group-hover:shadow-md pointer-events-none">';
+
+                    // Add the color stripes
+                    day.events.forEach((event) => {
+                        const ratio =
+                            maxTemp === minTemp
+                                ? 0.5
+                                : (event.temp - minTemp) / (maxTemp - minTemp);
+                        const hue = (1 - ratio) * 240;
+                        const bgColor = "hsl(" + hue + ", 70%, 55%)";
+                        cellHtml +=
+                            '<div class="flex-1 h-full" style="background-color: ' +
+                            bgColor +
+                            '"></div>';
+                    });
+
+                    cellHtml += "</div>"; // End inner stripes wrapper
+                    cellHtml += "</div>"; // End outer cell wrapper
+
+                    gridHtml += cellHtml;
+                });
+
+                gridHtml += "</div>";
+                container.innerHTML = gridHtml;
             }
 
             function formatDate(isoString) {
